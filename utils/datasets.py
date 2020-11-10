@@ -58,7 +58,8 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
                                       single_cls=opt.single_cls,
                                       stride=int(stride),
                                       pad=pad,
-                                      rank=rank)
+                                      rank=rank,
+                                      labels_subdir=opt.labels_subdir)
 
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -327,7 +328,7 @@ class LoadStreams:  # multiple IP or RTSP cameras
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, rank=-1):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, rank=-1, labels_subdir="labels"):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -337,9 +338,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
 
-        def img2label_paths(img_paths):
+        def img2label_paths(img_paths, labels_subdir='labels'):
             # Define label paths as a function of image paths
-            sa, sb = os.sep + 'images' + os.sep, os.sep + 'labels' + os.sep  # /images/, /labels/ substrings
+            sa, sb = os.sep + 'images' + os.sep, os.sep + labels_subdir + os.sep  # /images/, /labels/ substrings
             return [x.replace(sa, sb, 1).replace(os.path.splitext(x)[-1], '.txt') for x in img_paths]
 
         try:
@@ -362,7 +363,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             raise Exception('Error loading data from %s: %s\nSee %s' % (path, e, help_url))
 
         # Check cache
-        self.label_files = img2label_paths(self.img_files)  # labels
+        self.label_files = img2label_paths(self.img_files, labels_subdir=labels_subdir)  # labels
         cache_path = str(Path(self.label_files[0]).parent) + '.cache'  # cached labels
         if os.path.isfile(cache_path):
             cache = torch.load(cache_path)  # load
@@ -377,7 +378,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
         self.img_files = list(cache.keys())  # update
-        self.label_files = img2label_paths(cache.keys())  # update
+        self.label_files = img2label_paths(cache.keys(), labels_subdir=labels_subdir)  # update
 
         n = len(shapes)  # number of images
         bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
